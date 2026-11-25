@@ -341,10 +341,10 @@ final class ReviewPanel: NSObject, NSTextFieldDelegate, NSGestureRecognizerDeleg
     }
 
     @objc private func doubleClickCard(_ g: NSClickGestureRecognizer) {
-        if let i = index(of: g) { beginEditing(i) }
+        if !sending, let i = index(of: g) { beginEditing(i) }
     }
 
-    @objc private func startEdit(_ sender: NSButton) { beginEditing(sender.tag) }
+    @objc private func startEdit(_ sender: NSButton) { if !sending { beginEditing(sender.tag) } }
 
     private func beginEditing(_ i: Int) {
         editingIndex = i
@@ -384,6 +384,7 @@ final class ReviewPanel: NSObject, NSTextFieldDelegate, NSGestureRecognizerDeleg
     }
 
     @objc private func remove(_ sender: NSButton) {
+        guard !sending else { return }  // the send in progress counts on the first N comments
         items.remove(at: sender.tag)
         open = Set(open.compactMap { $0 < sender.tag ? $0 : $0 > sender.tag ? $0 - 1 : nil })
         render()

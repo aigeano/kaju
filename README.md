@@ -68,7 +68,7 @@ brew install aigeano/tap/kaju
 brew services start kaju
 ```
 
-kaju is compiled on your Mac during install, so you need the Xcode command line tools (`xcode-select --install`), which Homebrew already requires.
+kaju is compiled on your Mac during install, so you need the Xcode command line tools 15.3 or later (`xcode-select --install`), which Homebrew already requires. Full Xcode is not needed.
 
 After `brew upgrade kaju`, run `brew services restart kaju`.
 

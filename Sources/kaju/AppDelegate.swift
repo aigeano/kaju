@@ -8,12 +8,14 @@ final class PaneSession {
     var adapter: TerminalAdapter
     var input: CommentInput?
     var panel: ReviewPanel?
+    /// True while the review panel is being opened (its frame is fetched off the main thread).
+    var panelPending = false
 
     init(target: Target, adapter: TerminalAdapter) {
         self.target = target
         self.adapter = adapter
     }
-    var isEmpty: Bool { input == nil && panel == nil }
+    var isEmpty: Bool { input == nil && panel == nil && !panelPending }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -315,11 +317,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// thread, since it can take an AppleScript or helper round trip), then run `then`.
     private func ensurePanel(_ s: PaneSession, items: [Annotation], then: @escaping () -> Void) {
         if s.panel != nil { then(); return }
+        s.panelPending = true  // keeps the session registered until the panel exists
         let (a, t) = (s.adapter, s.target)
         work.async { [weak self] in
             let frame = a.windowFrame(t)
             DispatchQueue.main.async {
                 guard let self else { return }
+                s.panelPending = false
                 if s.panel == nil { self.openPanel(s, items: items, host: frame) }
                 then()
             }
@@ -347,6 +351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         p.onEditingEnded = { [weak self, weak s] in if let self, let s { self.returnFocus(s) } }
         s.panel = p
         try? store.save(ReviewFile(key: s.target.key, label: s.target.label, items: items))
+        s.input?.setPending(items.count)
     }
 
     private func sendReview(_ s: PaneSession) {
@@ -471,11 +476,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         work.async { [self] in
             for r in saved {
                 if onlyITerm && !r.key.hasPrefix("iterm2:") { continue }
-                guard let (a, t) = resolveSaved(r) else { continue }
+                guard let (a, found) = resolveSaved(r) else { continue }
                 DispatchQueue.main.async {
-                    if t.key != r.key {  // moved to another pane
+                    var t = found
+                    if t.key != r.key {
+                        // Moved to another pane: say so in the panel, and never overwrite a
+                        // review already there; merge into it instead.
+                        t.label += " · review restored here"
                         self.store.delete(key: r.key)
-                        try? self.store.save(ReviewFile(key: t.key, label: t.label, items: r.items))
+                        if let open = self.sessions[t.key], let panel = open.panel {
+                            r.items.forEach(panel.add)
+                            return
+                        }
+                        let existing = self.store.load(key: t.key)?.items ?? []
+                        try? self.store.save(ReviewFile(key: t.key, label: t.label, items: existing + r.items))
                     }
                     if self.sessions[t.key] == nil { _ = self.session(for: a, t) }
                 }

@@ -81,9 +81,10 @@ final class ITerm2Adapter: TerminalAdapter {
             if d.isEmpty { h.readabilityHandler = nil; return }
             self?.received(d)
         }
-        p.terminationHandler = { [weak self] _ in
+        p.terminationHandler = { [weak self] exited in
             DispatchQueue.main.async {
-                guard let self else { return }
+                // A late handler from an older helper must not reset the current one.
+                guard let self, exited === self.process else { return }
                 self.ready = false
                 self.failAll()
                 Log.info("iTerm2 helper exited")
