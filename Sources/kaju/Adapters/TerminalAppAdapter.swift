@@ -22,6 +22,8 @@ final class TerminalAppAdapter: TerminalAdapter {
 
     /// Make sure kaju may control Terminal (Automation). Asks the user if needed and
     /// waits for the answer, so the AppleScript calls below never time out on the prompt.
+    /// While the prompt is up this blocks kaju's work queue; that is intended (it happens once),
+    /// so never call it on the main thread.
     private func automationAllowed() -> Bool {
         var addr = AEAddressDesc()
         let id = "com.apple.Terminal"
@@ -32,8 +34,11 @@ final class TerminalAppAdapter: TerminalAdapter {
         switch status {
         case noErr:
             return true
-        case OSStatus(errAEEventNotPermitted):
+        case OSStatus(errAEEventNotPermitted), OSStatus(errAEEventWouldRequireUserConsent):
             problem = "kaju is not allowed to control Terminal. Turn it on in System Settings › Privacy & Security › Automation › kaju › Terminal."
+            return false
+        case OSStatus(procNotFound):
+            problem = "Terminal is not running."
             return false
         default:
             problem = "Could not check kaju's permission to control Terminal (error \(status))."
@@ -47,7 +52,8 @@ final class TerminalAppAdapter: TerminalAdapter {
 
     /// Run `body` with `w` and `t` bound to the window and tab whose tty matches.
     private func onTab(_ tty: String, _ body: String) -> String? {
-        guard tty.range(of: #"^/dev/ttys[0-9]+$"#, options: .regularExpression) != nil else { return nil }
+        guard tty.range(of: #"^/dev/ttys[0-9]+$"#, options: .regularExpression) != nil,
+              automationAllowed() else { return nil }
         return osa("""
         tell application "Terminal"
           repeat with w in windows
@@ -66,6 +72,7 @@ final class TerminalAppAdapter: TerminalAdapter {
         guard automationAllowed() else { return nil }
         guard let out = osa("""
         tell application "Terminal"
+          if (count of windows) is 0 then return ""
           set w to front window
           set t to selected tab of w
           set sep to character id 9
@@ -73,6 +80,10 @@ final class TerminalAppAdapter: TerminalAdapter {
         end tell
         """) else {
             problem = "Terminal did not answer kaju's request for the front tab."
+            return nil
+        }
+        if out.isEmpty {
+            problem = "Open a Terminal window with Claude Code first."
             return nil
         }
         let f = out.components(separatedBy: "\t")
