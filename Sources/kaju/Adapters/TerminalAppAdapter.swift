@@ -1,5 +1,6 @@
 // Copyright 2026 Sagar Pandey. Licensed under the Apache License 2.0; see LICENSE and NOTICE.
 import AppKit
+import CoreServices
 import KajuCore
 
 /// Terminal.app, through AppleScript (Automation permission). Delivery selects
@@ -14,6 +15,30 @@ final class TerminalAppAdapter: TerminalAdapter {
     init(clipboard: ClipboardMonitor, shell: Shell = .system) {
         self.clipboard = clipboard
         self.shell = shell
+    }
+
+    /// Why the last `target` failed, for the user (nil when it worked).
+    private(set) var problem: String?
+
+    /// Make sure kaju may control Terminal (Automation). Asks the user if needed and
+    /// waits for the answer, so the AppleScript calls below never time out on the prompt.
+    private func automationAllowed() -> Bool {
+        var addr = AEAddressDesc()
+        let id = "com.apple.Terminal"
+        let made = id.withCString { AECreateDesc(DescType(typeApplicationBundleID), $0, strlen($0), &addr) }
+        guard made == noErr else { return false }
+        defer { AEDisposeDesc(&addr) }
+        let status = AEDeterminePermissionToAutomateTarget(&addr, AEEventClass(typeWildCard), AEEventID(typeWildCard), true)
+        switch status {
+        case noErr:
+            return true
+        case OSStatus(errAEEventNotPermitted):
+            problem = "kaju is not allowed to control Terminal. Turn it on in System Settings › Privacy & Security › Automation › kaju › Terminal."
+            return false
+        default:
+            problem = "Could not check kaju's permission to control Terminal (error \(status))."
+            return false
+        }
     }
 
     private func osa(_ script: String) -> String? {
@@ -37,13 +62,18 @@ final class TerminalAppAdapter: TerminalAdapter {
     }
 
     func target(app: NSRunningApplication) -> Target? {
+        problem = nil
+        guard automationAllowed() else { return nil }
         guard let out = osa("""
         tell application "Terminal"
           set w to front window
           set t to selected tab of w
           return (id of w as text) & tab & (tty of t) & tab & (name of w)
         end tell
-        """) else { return nil }
+        """) else {
+            problem = "Terminal did not answer kaju's request for the front tab."
+            return nil
+        }
         let f = out.components(separatedBy: "\t")
         guard f.count >= 3, let wid = UInt32(f[0]) else { return nil }
         // ttys are reused by newer tabs, so the key also names the window.

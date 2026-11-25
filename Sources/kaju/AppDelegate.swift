@@ -231,7 +231,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if bundle == ITerm2Adapter.bundleID, let it = iterm, it.available {
             if let sid = iTermSession, let t = it.target(session: sid) { host = (it, t) }
             else if let t = it.target(app: app) { host = (it, t) }
-        } else if terminalApp.bundleIDs.contains(bundle), let t = terminalApp.target(app: app) {
+        } else if terminalApp.bundleIDs.contains(bundle) {
+            guard let t = terminalApp.target(app: app) else {
+                // Never fall back silently to paste-only for Terminal: say what is missing.
+                let why = terminalApp.problem ?? "Terminal did not answer."
+                Log.info("Terminal.app target unavailable: \(why)")
+                DispatchQueue.main.async { self.alert("kaju cannot reach Terminal", why) }
+                return nil
+            }
             host = (terminalApp, t)
         }
         if let (a, t) = host {
