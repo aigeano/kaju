@@ -58,21 +58,4 @@ public struct ReviewStore {
             (try? Data(contentsOf: u)).flatMap { try? JSONDecoder().decode(ReviewFile.self, from: $0) }
         }
     }
-
-    /// One-time import of reviews saved by the iTerm2 prototype (plain arrays of
-    /// comments, one file per iTerm2 session id). Imported files are removed.
-    public func importPrototype(from dir: URL) -> Int {
-        let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-        var n = 0
-        for u in files where u.pathExtension == "json" {
-            guard let data = try? Data(contentsOf: u),
-                  let items = try? JSONDecoder().decode([Annotation].self, from: data), !items.isEmpty else { continue }
-            let sid = u.deletingPathExtension().lastPathComponent
-            if (try? save(ReviewFile(key: "iterm2:" + sid, label: "imported review", items: items))) != nil {
-                try? FileManager.default.removeItem(at: u)
-                n += 1
-            }
-        }
-        return n
-    }
 }

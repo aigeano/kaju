@@ -32,7 +32,7 @@ import Testing
         #expect(flat.unicodeScalars.allSatisfy { $0.value >= 0x20 && $0.value != 0x7F })
     }
 
-    @Test func decodesPrototypeItemsWithoutTag() throws {
+    @Test func decodesItemsWithoutTag() throws {
         let c = try JSONDecoder().decode(Annotation.self, from: Data(#"{"quote":"q","comment":"c"}"#.utf8))
         #expect(c == Annotation(quote: "q", comment: "c", tag: ""))
     }
@@ -189,16 +189,6 @@ import Testing
         #expect(s.all() == [r])
         s.delete(key: "tmux:work:1.0")
         #expect(s.load(key: "tmux:work:1.0") == nil)
-    }
-
-    @Test func importsPrototypeReviews() throws {
-        let s = tempStore()
-        let old = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
-        try Data(#"[{"quote":"q","comment":"c","tag":"nit"}]"#.utf8).write(to: old.appendingPathComponent("ABC-123.json"))
-        #expect(s.importPrototype(from: old) == 1)
-        #expect(s.load(key: "iterm2:ABC-123")?.items == [Annotation(quote: "q", comment: "c", tag: "nit")])
-        #expect((try? FileManager.default.contentsOfDirectory(atPath: old.path))?.isEmpty == true)
     }
 }
 

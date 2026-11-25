@@ -49,7 +49,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         registerHotkey()
         Log.info("kaju started; hotkey \(hotkeyDisplay) \(hotkeyOK ? "registered" : "UNAVAILABLE"); tmux \(tmux?.path ?? "not found")")
         setUpStatusItem()
-        importPrototypeReviews()
         visibilityTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in self?.updateVisibility() }
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(appActivated(_:)),
                                                           name: NSWorkspace.didActivateApplicationNotification, object: nil)
@@ -116,9 +115,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.isEnabled = false
             m.addItem(item)
         }
-        if oldScriptRunning() {
-            m.addItem(item("Stop the old claude-annotate script", #selector(stopOldScript)))
-        }
         m.addItem(.separator())
         m.addItem(item("Open Accessibility settings…", #selector(openAccessibility)))
         m.addItem(item("Reset permissions (after an upgrade)", #selector(resetPermissions)))
@@ -142,19 +138,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return w
     }
 
-    private func oldScriptRunning() -> Bool {
-        Shell.system.run("/usr/bin/pgrep", ["-f", "claude_comment.py"]) != nil
-    }
-
     @objc private func menuComment() {
         // The menu took focus from the terminal; give it back, then trigger.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self.trigger() }
-    }
-
-    @objc private func stopOldScript() {
-        _ = Shell.system.run("/usr/bin/pkill", ["-f", "claude_comment.py"])
-        alert("The old script was stopped.",
-              "Also remove claude-annotate from plugins=(...) in ~/.zshrc and the old iTerm2 key binding, so it does not start again.")
     }
 
     @objc private func openAccessibility() {
@@ -467,12 +453,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: restore
-
-    private func importPrototypeReviews() {
-        let old = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".oh-my-zsh/custom/plugins/claude-annotate/reviews")
-        _ = store.importPrototype(from: old)
-    }
 
     /// Reopen saved reviews (plan: review keys and restore rules).
     /// - iTerm2: the same session if it still exists, else the current session.
