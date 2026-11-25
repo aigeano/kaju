@@ -196,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let a = NSAlert()
         a.messageText = title
         a.informativeText = text
-        a.icon = Theme.earsImage(size: NSSize(width: 64, height: 64), color: Theme.ginger)
+        a.icon = NSApp.applicationIconImage
         a.runModal()
     }
 

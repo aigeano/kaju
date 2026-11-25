@@ -3,3 +3,4 @@ build/
 *.app
 .swiftpm/
 __pycache__/
+Resources/AppIcon.iconset/

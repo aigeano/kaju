@@ -25,7 +25,7 @@ app: build
 	mkdir -p build/kaju.app/Contents/MacOS build/kaju.app/Contents/Resources
 	cp "$$(swift build -c release --disable-sandbox --show-bin-path)/kaju" build/kaju.app/Contents/MacOS/kaju
 	sed 's/__VERSION__/$(VERSION)/g' Resources/Info.plist > build/kaju.app/Contents/Info.plist
-	cp Resources/kaju_iterm2_helper.py Resources/requirements.txt LICENSE NOTICE build/kaju.app/Contents/Resources/
+	cp Resources/kaju_iterm2_helper.py Resources/requirements.txt Resources/AppIcon.icns LICENSE NOTICE build/kaju.app/Contents/Resources/
 	if [ -n "$(PYTHON_PATH)" ]; then printf '%s\n' "$(PYTHON_PATH)" > build/kaju.app/Contents/Resources/python-path; fi
 	codesign --force --sign - --identifier $(BUNDLE_ID) build/kaju.app
 

@@ -1,3 +1,5 @@
+<img src="docs/icon.png" alt="kaju icon: a content ginger cat with a speech bubble" width="128" align="right">
+
 # kaju
 
 **kaju: annotate, comment and collaborate with Claude Code.**
