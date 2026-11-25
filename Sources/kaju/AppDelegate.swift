@@ -162,12 +162,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// On the first launch of a new build, reset them once so macOS asks again.
     /// Homebrew cannot do this at install time: its sandbox blocks tccutil.
     private func resetPermissionsIfNewBuild() {
-        guard let build = Self.signatureHash() else { return }  // unsigned (swift run)
+        // Only the app bundle: a bare `swift run` binary is signed ad hoc too, and
+        // would otherwise reset the installed app's approvals on every dev build.
+        guard Bundle.main.bundleURL.pathExtension == "app", Bundle.main.bundleIdentifier != nil,
+              let build = Self.signatureHash() else { return }
         let key = "lastBuildSignature"
         guard UserDefaults.standard.string(forKey: key) != build else { return }
+        // One attempt per build, whatever the result: retrying on later launches could
+        // wipe approvals the user has just given. "Reset permissions" stays as the fallback.
+        UserDefaults.standard.set(build, forKey: key)
         let ok = resetOwnPermissions()
-        Log.info("new build: permissions reset \(ok ? "done" : "incomplete")")
-        if ok { UserDefaults.standard.set(build, forKey: key) }
+        Log.info("new build: permissions reset \(ok ? "done" : "incomplete; use Reset permissions in the menu if kaju cannot type")")
     }
 
     /// The code directory hash of kaju's own signature, or nil if unsigned.

@@ -5,7 +5,8 @@ BUNDLE_ID   := io.github.aigeano.kaju
 SUPPORT     := $(HOME)/Library/Application Support/kaju
 AGENT       := $(HOME)/Library/LaunchAgents/io.github.aigeano.kaju.plist
 # Homebrew 7 names its service sh.brew.kaju; older versions homebrew.mxcl.kaju.
-BREW_AGENTS := $(HOME)/Library/LaunchAgents/sh.brew.kaju.plist $(HOME)/Library/LaunchAgents/homebrew.mxcl.kaju.plist
+BREW_AGENT  := $(HOME)/Library/LaunchAgents/sh.brew.kaju.plist
+BREW_AGENT_OLD := $(HOME)/Library/LaunchAgents/homebrew.mxcl.kaju.plist
 PYTHON      ?= $(shell command -v python3.13 || command -v python3)
 # Python for the iTerm2 helper, written into the app; empty means kaju's own venv.
 PYTHON_PATH ?=
@@ -36,7 +37,7 @@ venv:
 	"$(SUPPORT)/venv/bin/pip" install --quiet --disable-pip-version-check -r Resources/requirements.txt
 
 install: app venv
-	@for f in $(BREW_AGENTS); do if [ -f "$$f" ]; then echo "kaju is installed with Homebrew; use 'brew upgrade kaju' instead."; exit 1; fi; done
+	@if [ -f "$(BREW_AGENT)" ] || [ -f "$(BREW_AGENT_OLD)" ]; then echo "kaju is installed with Homebrew; use 'brew upgrade kaju' instead."; exit 1; fi
 	-launchctl bootout gui/$$(id -u) "$(AGENT)" 2>/dev/null
 	mkdir -p "$(HOME)/Applications" "$(HOME)/Library/LaunchAgents"
 	rm -rf "$(HOME)/Applications/kaju.app"

@@ -13,7 +13,7 @@ public struct Annotation: Codable, Equatable {
         self.tag = tag
     }
 
-    // Tolerant decoding: older review files have no tag.
+    // Tolerant decoding: a review file written without a quote or tag still loads.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         quote = try c.decodeIfPresent(String.self, forKey: .quote) ?? ""
