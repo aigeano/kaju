@@ -1,0 +1,101 @@
+name: release
+# Push a tag such as v0.2.0 to release. This workflow tests the build, creates
+# the GitHub Release with the notes from CHANGELOG.md, checks that the Homebrew
+# formula installs, and publishes it to aigeano/homebrew-tap.
+# Needs the secret TAP_TOKEN: a fine-grained token with Contents read and
+# write on aigeano/homebrew-tap only. Safe to re-run after a partial failure.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    permissions:
+      contents: write  # gh release create
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Check the tag
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Not a release tag: $TAG" >&2; exit 1; }
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Before anything public is created, so a missing or expired token fails early.
+      # The token is not kept on disk; only the final push uses it.
+      - name: Check out the tap
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: aigeano/homebrew-tap
+          token: ${{ secrets.TAP_TOKEN }}
+          path: tap
+          persist-credentials: false
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v v="$VERSION" '
+            /^## / { if (found) exit; if (index($0, "## " v " ") == 1 || $0 == "## " v) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
+            echo "CHANGELOG.md has no section for $VERSION" >&2
+            exit 1
+          fi
+
+      - name: Build and test
+        run: |
+          swift build
+          swift test
+          make app VERSION="$VERSION"
+          codesign -dv build/kaju.app 2>&1 | grep "Identifier=io.github.aigeano.kaju"
+
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 ||
+            gh release create "$TAG" --title "kaju $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
+
+      - name: Write the formula
+        run: |
+          URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.tar.gz"
+          curl -fsSL --retry 5 --retry-delay 5 "$URL" -o "$RUNNER_TEMP/source.tar.gz"
+          SHA=$(shasum -a 256 "$RUNNER_TEMP/source.tar.gz" | cut -d' ' -f1)
+          mkdir -p tap/Formula
+          sed -E \
+            -e "s|^  url \".*\"|  url \"${URL}\"|" \
+            -e "s|^  sha256 \"REPLACE_WITH_RELEASE_TARBALL_SHA256\"|  sha256 \"${SHA}\"|" \
+            packaging/homebrew/kaju.rb > tap/Formula/kaju.rb
+          grep -q "url \"${URL}\"" tap/Formula/kaju.rb
+          grep -q "sha256 \"${SHA}\"" tap/Formula/kaju.rb
+
+      - name: Check that the formula installs
+        run: |
+          brew tap-new --no-git kajuci/check
+          cp tap/Formula/kaju.rb "$(brew --repository)/Library/Taps/kajuci/homebrew-check/Formula/kaju.rb"
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install kajuci/check/kaju
+          brew test kajuci/check/kaju
+
+      - name: Publish the formula
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/kaju.rb
+          git diff --cached --quiet || {
+            git commit -m "kaju ${VERSION}"
+            git push "https://x-access-token:${TAP_TOKEN}@github.com/aigeano/homebrew-tap.git" HEAD:main
+          }
