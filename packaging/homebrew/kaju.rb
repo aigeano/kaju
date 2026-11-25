@@ -1,5 +1,6 @@
-# Homebrew formula for kaju, for the tap github.com/aigeano/homebrew-tap
-# (copy to Formula/kaju.rb there). Install with: brew install aigeano/tap/kaju
+# Homebrew formula for kaju. The release workflow fills in the url and sha256
+# and publishes it as Formula/kaju.rb in github.com/aigeano/homebrew-tap.
+# Install with: brew install aigeano/tap/kaju
 #
 # kaju is built from source on the user's Mac, so Gatekeeper does not get
 # involved and no Apple Developer account is needed.

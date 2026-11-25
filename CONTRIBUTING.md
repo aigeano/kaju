@@ -61,6 +61,12 @@ Both can report the pane's tty, so both can get full support, including sending 
 - If you modify a file, say so in your commit; the Apache License asks that modified files carry a notice of the change.
 - Do not log comment text or selections.
 
+## Changes and releases
+
+- Changes reach `main` through pull requests, and CI must pass before merging.
+- Add a line under `## Unreleased` in `CHANGELOG.md` for anything users notice.
+- To release, the maintainer renames `## Unreleased` to `## X.Y.Z - YYYY-MM-DD` (and starts a new empty `## Unreleased` above it), merges that, and pushes a tag such as `v0.2.0`. The release workflow then tests the build, creates the GitHub Release from the CHANGELOG and updates the Homebrew formula in `aigeano/homebrew-tap`.
+
 ## Reporting bugs
 
 Please include your macOS version, terminal and version, Claude Code version and display mode (full-screen or classic), whether you use tmux, and the relevant lines of `~/Library/Logs/kaju.log`.

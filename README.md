@@ -58,7 +58,7 @@ Your shell does not matter. Your terminal does, because terminals differ in what
 |---|---|---|---|---|---|
 | iTerm2 | Yes | Yes | Yes | Yes | Automation |
 | Terminal.app | Yes | No (at the mouse pointer) | Yes | No | Automation, Accessibility |
-| tmux, inside iTerm2 or Terminal.app | Yes | No (at the mouse pointer) | Yes | No | Same as the terminal it runs in |
+| tmux, inside iTerm2 or Terminal.app (untested) | Yes | No (at the mouse pointer) | Yes | No | Same as the terminal it runs in |
 | Any other terminal (Ghostty, Warp, Alacritty, kitty, WezTerm, ...) | No: pasted as one line, you press Return | No (at the mouse pointer) | No (hides when the app is not in front) | No | Accessibility |
 
 kitty and WezTerm can get full support with an adapter. Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
