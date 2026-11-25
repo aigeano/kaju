@@ -1,8 +1,10 @@
-<img src="docs/icon.png" alt="kaju icon: a content ginger cat with a speech bubble" width="128" align="right">
+<p align="center">
+  <img src="docs/icon.png" alt="kaju icon: a content ginger cat with a speech bubble" width="128">
+</p>
 
-# kaju
+<h1 align="center">kaju</h1>
 
-**kaju: annotate, comment and collaborate with Claude Code.**
+<p align="center"><b>Annotate, comment and collaborate with Claude Code.</b></p>
 
 ![kaju in action: three comments on Claude Code's plan, collected in a review and sent back together](docs/demo.gif)
 
