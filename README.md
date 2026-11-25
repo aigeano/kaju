@@ -123,10 +123,6 @@ Choose **Reload config** after editing. If the hotkey is taken by another app, t
 
 kaju makes no network connections. It reads the clipboard to see your selection, never quotes items that password managers mark as concealed, and in the Basic tier only uses clipboard changes made while a terminal was in front. Comments are stored on your Mac only while a review is open. The log at `~/Library/Logs/kaju.log` records events, never comment text.
 
-## Moving from the claude-annotate prototype
-
-If you used the earlier iTerm2 script: remove `claude-annotate` from `plugins=(...)` in `~/.zshrc`, remove the iTerm2 key binding that invoked `claude_comment`, and stop the old script (kaju's menu offers this while it is running). kaju imports any open reviews from the prototype on first launch.
-
 ## Licence
 
 Apache License 2.0. If you redistribute or build on kaju, keep the [NOTICE](NOTICE) file, which credits the author and links to this repository.
