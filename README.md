@@ -102,7 +102,7 @@ make uninstall    # removes them again
 
 iTerm2 also needs its Python API: iTerm2 › Settings › General › Magic › **Enable Python API**.
 
-kaju is built on your Mac and signed ad hoc, so macOS treats every upgrade as a new app and forgets these permissions. After an upgrade, approve them again when asked. If a permission looks enabled in System Settings but kaju cannot use it, choose **Reset permissions** in kaju's menu-bar menu.
+kaju is built on your Mac and signed ad hoc, so macOS treats every upgrade as a new app. kaju clears its old approvals the first time a new build starts, so after an upgrade, approve them again when asked. If a permission looks enabled in System Settings but kaju cannot use it, choose **Reset permissions** in kaju's menu-bar menu.
 
 ### Claude Code display modes
 
