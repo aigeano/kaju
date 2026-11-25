@@ -1,6 +1,7 @@
 // Copyright 2026 Sagar Pandey. Licensed under the Apache License 2.0; see LICENSE and NOTICE.
 import AppKit
 import KajuCore
+import Security
 
 /// One pane kaju is working with: its open comment input and/or review panel.
 final class PaneSession {
@@ -34,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let work = DispatchQueue(label: "kaju.work")
 
     func applicationDidFinishLaunching(_ n: Notification) {
+        resetPermissionsIfNewBuild()
         terminalApp = TerminalAppAdapter(clipboard: clipboard)
         generic = GenericAdapter(clipboard: clipboard)
         if let path = Tmux.locate(configured: config.tmuxPath) {
@@ -147,11 +149,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
     }
 
-    @objc private func resetPermissions() {
+    /// Clear kaju's own Accessibility and Automation entries. True if both were reset.
+    private func resetOwnPermissions() -> Bool {
         let id = Bundle.main.bundleIdentifier ?? "io.github.aigeano.kaju"
         let a = Shell.system.run("/usr/bin/tccutil", ["reset", "Accessibility", id]) != nil
         let b = Shell.system.run("/usr/bin/tccutil", ["reset", "AppleEvents", id]) != nil
-        alert(a && b ? "Permissions reset" : "Could not reset every permission",
+        return a && b
+    }
+
+    /// Each build is signed ad hoc, so an upgrade changes kaju's signature and macOS
+    /// keeps approvals that no longer match it (shown as allowed, but not working).
+    /// On the first launch of a new build, reset them once so macOS asks again.
+    /// Homebrew cannot do this at install time: its sandbox blocks tccutil.
+    private func resetPermissionsIfNewBuild() {
+        guard let build = Self.signatureHash() else { return }  // unsigned (swift run)
+        let key = "lastBuildSignature"
+        guard UserDefaults.standard.string(forKey: key) != build else { return }
+        let ok = resetOwnPermissions()
+        Log.info("new build: permissions reset \(ok ? "done" : "incomplete")")
+        if ok { UserDefaults.standard.set(build, forKey: key) }
+    }
+
+    /// The code directory hash of kaju's own signature, or nil if unsigned.
+    private static func signatureHash() -> String? {
+        var code: SecCode?
+        var staticCode: SecStaticCode?
+        var info: CFDictionary?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code,
+              SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode,
+              SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+              let dict = info as? [String: Any],
+              let hash = dict[kSecCodeInfoUnique as String] as? Data else { return nil }
+        return hash.map { String(format: "%02x", $0) }.joined()
+    }
+
+    @objc private func resetPermissions() {
+        let ok = resetOwnPermissions()
+        alert(ok ? "Permissions reset" : "Could not reset every permission",
               "macOS will ask again the next time kaju needs Accessibility or Automation. After an upgrade, the old entries no longer match the new build, so this reset is needed once.")
     }
 

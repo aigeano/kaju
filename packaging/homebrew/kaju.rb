@@ -41,14 +41,6 @@ class Kaju < Formula
     bin.write_exec_script prefix/"kaju.app/Contents/MacOS/kaju"
   end
 
-  def post_install
-    # A rebuild changes the ad hoc signature, so old Accessibility and
-    # Automation approvals no longer match. Clear them; macOS asks again.
-    %w[Accessibility AppleEvents].each do |service|
-      quiet_system "/usr/bin/tccutil", "reset", service, "io.github.aigeano.kaju"
-    end
-  end
-
   service do
     run opt_prefix/"kaju.app/Contents/MacOS/kaju"
     environment_variables PATH: std_service_path_env
@@ -66,10 +58,10 @@ class Kaju < Formula
         brew services restart kaju
 
       macOS asks again for Automation (iTerm2, Terminal) and Accessibility
-      (Terminal.app and other terminals) after each upgrade. If a permission
-      looks enabled but kaju cannot use it, run:
-        tccutil reset Accessibility io.github.aigeano.kaju
-        tccutil reset AppleEvents io.github.aigeano.kaju
+      (Terminal.app and other terminals) after each upgrade: kaju clears its
+      old approvals on the first start of a new build. If a permission still
+      looks enabled but kaju cannot use it, choose "Reset permissions" in
+      kaju's menu.
 
       iTerm2 users: enable iTerm2 > Settings > General > Magic > Enable Python API.
     EOS
