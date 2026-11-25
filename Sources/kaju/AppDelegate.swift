@@ -330,7 +330,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func openPanel(_ s: PaneSession, items: [Annotation], host frame: NSRect?) {
+    private func openPanel(_ s: PaneSession, items captured: [Annotation], host frame: NSRect?) {
+        // The saved file is the source of truth: it may have gained comments (a merged
+        // restore) between the request to open the panel and now.
+        let items = store.load(key: s.target.key)?.items ?? captured
         let host = frame ?? NSScreen.main?.visibleFrame ?? .zero
         let cascade = sessions.values.filter { $0.panel != nil }.count
         let p = ReviewPanel(host: host, label: s.target.label, items: items, cascade: cascade)
