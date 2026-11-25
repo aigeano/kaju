@@ -68,14 +68,18 @@ final class TerminalAppAdapter: TerminalAdapter {
         tell application "Terminal"
           set w to front window
           set t to selected tab of w
-          return (id of w as text) & tab & (tty of t) & tab & (name of w)
+          set sep to character id 9
+          return (id of w as text) & sep & (tty of t) & sep & (name of w)
         end tell
         """) else {
             problem = "Terminal did not answer kaju's request for the front tab."
             return nil
         }
         let f = out.components(separatedBy: "\t")
-        guard f.count >= 3, let wid = UInt32(f[0]) else { return nil }
+        guard f.count >= 3, let wid = UInt32(f[0]) else {
+            problem = "Terminal gave an answer kaju could not read."
+            return nil
+        }
         // ttys are reused by newer tabs, so the key also names the window.
         return Target(key: "terminal:\(f[1]):\(wid)", label: f[2], bundleID: "com.apple.Terminal",
                       pid: app.processIdentifier, tty: f[1], windowID: wid)
@@ -89,7 +93,8 @@ final class TerminalAppAdapter: TerminalAdapter {
     func selectionAnchor(_ t: Target, clipboard: String) -> NSPoint? { nil }
 
     func visibleText(_ t: Target) -> String? {
-        t.tty.flatMap { onTab($0, "return contents of t") }
+        // `t` is a loop reference: `contents of t` alone gives the reference, not the text.
+        t.tty.flatMap { onTab($0, "return contents of (contents of t)") }
     }
 
     func windowFrame(_ t: Target) -> NSRect? {
