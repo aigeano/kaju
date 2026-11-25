@@ -1,0 +1,6 @@
+# Python packages for kaju's iTerm2 helper (pinned). Installed into kaju's own
+# virtualenv; never bundled. iterm2 is GPL-2.0-or-later; protobuf and
+# websockets are BSD-3-Clause.
+iterm2==2.30
+protobuf==7.36.2
+websockets==17.4
