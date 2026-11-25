@@ -28,6 +28,13 @@ public enum ClipboardPolicy {
         }
     }
 
+    /// True if the current clipboard contents were written by kaju itself
+    /// (for example a refused comment it copied), which must never be quoted back.
+    public static func isOwnWrite(last: Change?, currentCount: Int) -> Bool {
+        guard let c = last, c.count == currentCount else { return false }
+        return c.ownWrite
+    }
+
     /// Tiers that can read the pane's visible text (iTerm2, tmux, Terminal.app):
     /// accept the clipboard only if its start is visible in the pane.
     public static func acceptVisible(clipboard: String, visibleText: String, concealed: Bool) -> Bool {

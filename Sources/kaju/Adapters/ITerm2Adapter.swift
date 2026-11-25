@@ -12,6 +12,8 @@ final class ITerm2Adapter: TerminalAdapter {
 
     /// Called on the main thread when the user picks "Comment with kaju" in iTerm2.
     var onMenu: ((String) -> Void)?
+    /// Called on the main thread each time the helper becomes ready.
+    var onReady: (() -> Void)?
     /// Last helper problem, shown in the menu bar.
     private(set) var problem: String?
 
@@ -23,7 +25,14 @@ final class ITerm2Adapter: TerminalAdapter {
     private var nextID = 1
     private var pending: [Int: (DispatchSemaphore, [String: Any]?)] = [:]
     private let lock = NSLock()
-    private(set) var ready = false
+    private let writeLock = NSLock()
+    private var restartDelay: TimeInterval = 5
+    private var _ready = false
+    /// Read from any thread; written on the main thread.
+    private(set) var ready: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return _ready }
+        set { lock.lock(); _ready = newValue; lock.unlock() }
+    }
 
     init(python: String?, script: String) {
         self.python = python
@@ -46,7 +55,10 @@ final class ITerm2Adapter: TerminalAdapter {
         !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
     }
 
-    var available: Bool { ready && process?.isRunning == true }
+    var available: Bool { ready && stdinHandle != nil }
+    private var stdinHandle: FileHandle? {
+        lock.lock(); defer { lock.unlock() }; return stdin
+    }
 
     // MARK: helper process
 
@@ -75,21 +87,25 @@ final class ITerm2Adapter: TerminalAdapter {
                 self.ready = false
                 self.failAll()
                 Log.info("iTerm2 helper exited")
-                // Restart while iTerm2 is still running (for example after an iTerm2 API hiccup).
+                self.lock.lock(); self.stdin = nil; self.lock.unlock()
+                // Restart while iTerm2 is still running, backing off up to a minute
+                // (for example while the Python API is switched off).
                 if Self.iTermRunning {
                     self.problem = "The iTerm2 helper stopped. Is the Python API enabled in iTerm2 (Settings › General › Magic)?"
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 5) { self.start() }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + self.restartDelay) { self.start() }
+                    self.restartDelay = min(self.restartDelay * 2, 60)
                 }
             }
         }
         do { try p.run() } catch { problem = "Could not start the iTerm2 helper: \(error.localizedDescription)"; Log.info(problem!); return }
         Log.info("iTerm2 helper started (\(python))")
         process = p
-        stdin = inPipe.fileHandleForWriting
+        lock.lock(); stdin = inPipe.fileHandleForWriting; lock.unlock()
     }
 
     func stop() {
         ready = false
+        lock.lock(); stdin = nil; lock.unlock()
         process?.terminate()
         process = nil
         failAll()
@@ -108,7 +124,13 @@ final class ITerm2Adapter: TerminalAdapter {
             guard let msg = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { continue }
             if let event = msg["event"] as? String {
                 DispatchQueue.main.async {
-                    if event == "ready" { self.ready = true; self.problem = nil; Log.info("iTerm2 helper ready") }
+                    if event == "ready" {
+                        self.ready = true
+                        self.problem = nil
+                        self.restartDelay = 5
+                        Log.info("iTerm2 helper ready")
+                        self.onReady?()
+                    }
                     if event == "menu", let s = msg["session"] as? String { self.onMenu?(s) }
                 }
             } else if let id = msg["id"] as? Int {
@@ -121,7 +143,7 @@ final class ITerm2Adapter: TerminalAdapter {
 
     /// Send a request and wait for the reply. Off the main thread only.
     func request(_ op: String, _ params: [String: Any] = [:], timeout: TimeInterval = 3) -> [String: Any]? {
-        guard available, let stdin else { return nil }
+        guard available, let stdin = stdinHandle else { return nil }
         let sem = DispatchSemaphore(value: 0)
         lock.lock()
         let id = nextID; nextID += 1
@@ -131,7 +153,15 @@ final class ITerm2Adapter: TerminalAdapter {
         msg["id"] = id
         msg["op"] = op
         guard let data = try? JSONSerialization.data(withJSONObject: msg) else { return nil }
-        stdin.write(data + Data([0x0A]))
+        // One writer at a time, so long lines from two threads cannot interleave;
+        // a closed pipe throws (SIGPIPE is ignored) instead of killing kaju.
+        writeLock.lock()
+        let written = (try? stdin.write(contentsOf: data + Data([0x0A]))) != nil
+        writeLock.unlock()
+        guard written else {
+            lock.lock(); pending.removeValue(forKey: id); lock.unlock()
+            return nil
+        }
         _ = sem.wait(timeout: .now() + timeout)
         lock.lock(); let reply = pending.removeValue(forKey: id)?.1; lock.unlock()
         guard let reply, reply["ok"] as? Bool == true else { return nil }
@@ -205,7 +235,11 @@ final class ITerm2Adapter: TerminalAdapter {
 
     func deliver(_ text: String, to t: Target, mode: DeliveryMode) -> DeliveryResult {
         guard let sid = t.ref["session"] else { return .failed("iTerm2 session unknown") }
-        guard request("send", ["session": sid, "text": text, "submit": mode == .submit], timeout: 5) != nil else {
+        // The helper drops the request if it arrives after the deadline, so a slow
+        // reply can never type text after kaju has already reported "Not sent".
+        let deadline = Date().timeIntervalSince1970 + 3
+        guard request("send", ["session": sid, "text": text, "submit": mode == .submit, "deadline": deadline],
+                      timeout: 5) != nil else {
             return .failed("iTerm2 did not accept the text. Is the Python API enabled (Settings › General › Magic)?")
         }
         return mode == .submit ? .sent : .pasted

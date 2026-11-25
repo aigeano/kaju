@@ -61,6 +61,21 @@ final class ReviewPanel: NSObject, NSTextFieldDelegate, NSGestureRecognizerDeleg
         render()
     }
 
+    /// True while a send is in progress: Send is disabled so a review cannot go twice.
+    private(set) var sending = false
+
+    func setSending(_ on: Bool) {
+        sending = on
+        renderPanel()
+    }
+
+    /// Remove the first `n` comments (the ones that were sent), keeping any added meanwhile.
+    func removeSent(_ n: Int) {
+        items.removeFirst(min(n, items.count))
+        open.removeAll()
+        render()
+    }
+
     func close() { panel.orderOut(nil) }
 
     func applyVisibility() {
@@ -131,9 +146,9 @@ final class ReviewPanel: NSObject, NSTextFieldDelegate, NSGestureRecognizerDeleg
         ])
 
         let discard = makeButton("Discard", Theme.dim, filled: false, #selector(discard(_:)))
-        let send = makeButton("Send \(items.count) to Claude Code", Theme.ginger, filled: true, #selector(sendAll))
-        send.isEnabled = !items.isEmpty
-        send.alphaValue = items.isEmpty ? 0.4 : 1
+        let send = makeButton(sending ? "Sending…" : "Send \(items.count) to Claude Code", Theme.ginger, filled: true, #selector(sendAll))
+        send.isEnabled = !items.isEmpty && !sending
+        send.alphaValue = send.isEnabled ? 1 : 0.4
         let buttons = NSStackView(views: [discard, NSView(), send])
         buttons.orientation = .horizontal
         let caption = makeLabel("Send ends the review. Or ⌘⏎ in the comment box.", NSFont.systemFont(ofSize: 10.5), Theme.dim, lines: 1)
@@ -375,6 +390,7 @@ final class ReviewPanel: NSObject, NSTextFieldDelegate, NSGestureRecognizerDeleg
     }
 
     @objc func sendAll() {
+        guard !sending else { return }
         if editingIndex != nil { endEditing(save: true) }
         onSend?(items)
     }

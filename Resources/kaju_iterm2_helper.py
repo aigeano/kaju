@@ -12,6 +12,7 @@ Events (helper -> kaju): {"event": "ready"} and {"event": "menu", "session": id}
 import asyncio
 import json
 import sys
+import time
 
 import iterm2
 
@@ -68,6 +69,8 @@ async def main(connection):
             await session_of(req).async_activate(select_tab=True, order_window_front=True)
             return {}
         if op == "send":
+            if time.time() > req.get("deadline", float("inf")):
+                raise TimeoutError("send arrived after its deadline; not typed")
             s = session_of(req)
             await s.async_send_text(PASTE_START + req["text"] + PASTE_END)
             if req.get("submit"):

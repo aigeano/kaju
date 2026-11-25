@@ -15,7 +15,11 @@ public struct Shell {
         return r.out
     }
 
-    public static let system = Shell { path, args, input in
+    /// Real processes, terminated after `timeout` seconds so that a hung program
+    /// (an unanswered permission prompt, a stuck tmux server) cannot block kaju.
+    public static let system = Shell.real(timeout: 5)
+
+    public static func real(timeout: TimeInterval) -> Shell { Shell { path, args, input in
         let p = Process()
         p.executableURL = URL(fileURLWithPath: path)
         p.arguments = args
@@ -25,12 +29,16 @@ public struct Shell {
         let inPipe = Pipe()
         if input != nil { p.standardInput = inPipe }
         do { try p.run() } catch { return nil }
+        let killer = DispatchWorkItem { if p.isRunning { p.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: killer)
         if let input {
-            inPipe.fileHandleForWriting.write(input.data(using: .utf8) ?? Data())
+            try? inPipe.fileHandleForWriting.write(contentsOf: input.data(using: .utf8) ?? Data())
             try? inPipe.fileHandleForWriting.close()
         }
         let data = out.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
+        killer.cancel()
+        if p.terminationReason == .uncaughtSignal { return (-1, "") }  // timed out
         return (p.terminationStatus, String(data: data, encoding: .utf8) ?? "")
-    }
+    } }
 }

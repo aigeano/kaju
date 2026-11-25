@@ -46,8 +46,14 @@ final class TerminalAppAdapter: TerminalAdapter {
         """) else { return nil }
         let f = out.components(separatedBy: "\t")
         guard f.count >= 3, let wid = UInt32(f[0]) else { return nil }
-        return Target(key: "terminal:\(f[1])", label: f[2], bundleID: "com.apple.Terminal",
+        // ttys are reused by newer tabs, so the key also names the window.
+        return Target(key: "terminal:\(f[1]):\(wid)", label: f[2], bundleID: "com.apple.Terminal",
                       pid: app.processIdentifier, tty: f[1], windowID: wid)
+    }
+
+    /// True if a tab with this tty exists in the window with this id.
+    func tabExists(tty: String, windowID: CGWindowID) -> Bool {
+        onTab(tty, "if (id of w) is \(windowID) then return \"yes\"") == "yes"
     }
 
     func selectionAnchor(_ t: Target, clipboard: String) -> NSPoint? { nil }
@@ -88,11 +94,14 @@ final class TerminalAppAdapter: TerminalAdapter {
             return .refused("Could not bring the Terminal tab you commented on to the front, so nothing was typed.")
         }
         PasteDelivery.paste(text, clipboard: clipboard)  // Terminal wraps it as a bracketed paste
-        if mode == .submit {
-            Thread.sleep(forTimeInterval: 0.2)
-            System.returnKeystroke()
-            return .sent
+        guard mode == .submit else { return .pasted }
+        Thread.sleep(forTimeInterval: 0.2)
+        // Check again right before Return: same tab in front, Claude Code still running.
+        guard isTabSelected(t), NSWorkspace.shared.frontmostApplication?.processIdentifier == t.pid,
+              isClaudeRunning(t) == true else {
+            return .pasted  // pasted into Claude Code's prompt, not submitted
         }
-        return .pasted
+        System.returnKeystroke()
+        return .sent
     }
 }

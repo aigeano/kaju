@@ -53,6 +53,7 @@ class Kaju < Formula
     run opt_prefix/"kaju.app/Contents/MacOS/kaju"
     environment_variables PATH: std_service_path_env
     run_type :immediate
+    keep_alive crashed: true
     process_type :interactive
   end
 

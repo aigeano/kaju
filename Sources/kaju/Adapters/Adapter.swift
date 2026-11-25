@@ -31,6 +31,16 @@ enum DeliveryResult {
     case pasted
     case refused(String)  // safety check failed; nothing was typed
     case failed(String)   // something technical went wrong
+
+    /// For the log: the outcome without any user-facing text (which can contain pane titles).
+    var kind: String {
+        switch self {
+        case .sent: return "sent"
+        case .pasted: return "pasted"
+        case .refused: return "refused"
+        case .failed: return "failed"
+        }
+    }
 }
 
 /// One terminal app. Methods are called off the main thread and may block briefly.
@@ -57,7 +67,8 @@ protocol TerminalAdapter: AnyObject {
 /// macOS helpers shared by adapters.
 enum System {
     /// Height of the primary screen, to convert between top-left and Cocoa coordinates.
-    static var primaryHeight: CGFloat { NSScreen.screens.first?.frame.height ?? 0 }
+    /// (CoreGraphics, so it is safe off the main thread.)
+    static var primaryHeight: CGFloat { CGDisplayBounds(CGMainDisplayID()).height }
 
     static func cocoaRect(fromTopLeft r: CGRect) -> NSRect {
         NSRect(x: r.minX, y: primaryHeight - r.maxY, width: r.width, height: r.height)

@@ -201,3 +201,28 @@ import Testing
         #expect((try? FileManager.default.contentsOfDirectory(atPath: old.path))?.isEmpty == true)
     }
 }
+
+@Suite struct ReviewFixTests {
+    @Test func messageStripsEscapesButKeepsLines() {
+        let m = Message.single(Annotation(quote: "a\u{1B}[201~b\r\nc", comment: "x\u{07}y\tz"))
+        #expect(!m.unicodeScalars.contains { $0.value == 0x1B || $0.value == 0x07 || $0 == "\r" })
+        #expect(m == "> a[201~b\n> c\n\nxy\tz")
+    }
+
+    @Test func ownWriteIsNeverQuoted() {
+        let own = ClipboardPolicy.Change(count: 9, time: Date(), frontmostBundle: nil, concealed: false, ownWrite: true)
+        #expect(ClipboardPolicy.isOwnWrite(last: own, currentCount: 9))
+        #expect(!ClipboardPolicy.isOwnWrite(last: own, currentCount: 10))  // changed since
+    }
+
+    @Test func shellTimesOut() {
+        let start = Date()
+        #expect(Shell.real(timeout: 0.5).run("/bin/sleep", ["5"]) == nil)
+        #expect(Date().timeIntervalSince(start) < 3)
+    }
+
+    @Test func moreHotkeyKeys() {
+        #expect(Hotkey("ctrl+opt+[")?.keyCode == 33)
+        #expect(Hotkey("cmd+shift+-")?.keyCode == 27)
+    }
+}

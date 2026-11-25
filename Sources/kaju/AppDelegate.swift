@@ -5,7 +5,7 @@ import KajuCore
 /// One pane kaju is working with: its open comment input and/or review panel.
 final class PaneSession {
     var target: Target
-    let adapter: TerminalAdapter
+    var adapter: TerminalAdapter
     var input: CommentInput?
     var panel: ReviewPanel?
 
@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let script = Self.resource("kaju_iterm2_helper.py") {
             let it = ITerm2Adapter(python: Self.pythonPath(), script: script)
             it.onMenu = { [weak self] sid in self?.trigger(iTermSession: sid) }
+            it.onReady = { [weak self] in self?.restoreReviews(onlyITerm: true) }
             iterm = it
         }
         hotkey = HotkeyManager { [weak self] in self?.trigger() }
@@ -50,8 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         visibilityTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in self?.updateVisibility() }
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(appActivated(_:)),
                                                           name: NSWorkspace.didActivateApplicationNotification, object: nil)
-        // Reopen saved reviews once the iTerm2 helper had a moment to start.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.restoreReviews() }
+        // Reopen saved reviews; iTerm2 ones are restored again when its helper is ready.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.restoreReviews(onlyITerm: false) }
     }
 
     // MARK: resources
@@ -202,7 +203,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Hotkey or "Comment with kaju" in iTerm2: open the input for the front pane.
     func trigger(iTermSession: String? = nil) {
         guard let front = NSWorkspace.shared.frontmostApplication else { return }
-        if front.processIdentifier == ProcessInfo.processInfo.processIdentifier { return }  // kaju is already in front
+        // kaju itself in front means its input already has the keyboard. An open input
+        // that lost focus to the terminal is reached below (session exists → focus(quote:)).
+        if front.processIdentifier == ProcessInfo.processInfo.processIdentifier { return }
         let bundle = front.bundleIdentifier ?? ""
         work.async { [self] in
             guard let (adapter, target) = resolveTarget(app: front, bundle: bundle, iTermSession: iTermSession) else {
@@ -245,6 +248,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             (clipboard.text ?? "", clipboard.isConcealed, clipboard.changeCount, clipboard.lastChange)
         }
         if text.isEmpty || concealed { return "" }
+        // A comment kaju itself copied (after a refusal) is never quoted back.
+        if ClipboardPolicy.isOwnWrite(last: last, currentCount: count) { return "" }
         if let visible = adapter.visibleText(target) {
             return ClipboardPolicy.acceptVisible(clipboard: text, visibleText: visible, concealed: concealed) ? text : ""
         }
@@ -256,11 +261,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: input and reviews
 
     private func session(for adapter: TerminalAdapter, _ target: Target) -> PaneSession {
-        if let s = sessions[target.key] { s.target = target; return s }
+        if let s = sessions[target.key] {
+            s.target = target
+            s.adapter = adapter  // e.g. a tmux pane reached from another host tab
+            return s
+        }
         let s = PaneSession(target: target, adapter: adapter)
         sessions[target.key] = s
         // A review saved earlier for this pane (for example before a restart) comes back here.
-        if let saved = store.load(key: target.key), !saved.items.isEmpty { openPanel(s, items: saved.items) }
+        if let saved = store.load(key: target.key), !saved.items.isEmpty { ensurePanel(s, items: saved.items) {} }
         return s
     }
 
@@ -287,9 +296,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .send:
             deliver(Message.single(a), to: s, keepOnFailure: nil)
         case .add:
-            if s.panel == nil { openPanel(s, items: []) }
-            s.panel?.add(a)
-            returnFocus(s)
+            ensurePanel(s, items: []) { [weak self, weak s] in
+                guard let self, let s else { return }
+                s.panel?.add(a)
+                self.returnFocus(s)
+            }
         case .addAndSend:
             if s.panel == nil {  // no review yet: behaves like a plain send
                 deliver(Message.single(a), to: s, keepOnFailure: nil)
@@ -300,8 +311,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func openPanel(_ s: PaneSession, items: [Annotation]) {
-        let host = s.adapter.windowFrame(s.target) ?? NSScreen.main?.visibleFrame ?? .zero
+    /// Open the review panel if needed (the window frame is fetched off the main
+    /// thread, since it can take an AppleScript or helper round trip), then run `then`.
+    private func ensurePanel(_ s: PaneSession, items: [Annotation], then: @escaping () -> Void) {
+        if s.panel != nil { then(); return }
+        let (a, t) = (s.adapter, s.target)
+        work.async { [weak self] in
+            let frame = a.windowFrame(t)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if s.panel == nil { self.openPanel(s, items: items, host: frame) }
+                then()
+            }
+        }
+    }
+
+    private func openPanel(_ s: PaneSession, items: [Annotation], host frame: NSRect?) {
+        let host = frame ?? NSScreen.main?.visibleFrame ?? .zero
         let cascade = sessions.values.filter { $0.panel != nil }.count
         let p = ReviewPanel(host: host, label: s.target.label, items: items, cascade: cascade)
         p.onChange = { [weak self, weak s] items in
@@ -324,13 +350,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func sendReview(_ s: PaneSession) {
-        guard let p = s.panel, !p.items.isEmpty else { return }
+        guard let p = s.panel, !p.items.isEmpty, !p.sending else { return }  // never twice
+        let sentCount = p.items.count
+        p.setSending(true)
         deliver(Message.review(p.items), to: s) { [weak self, weak s] ok in
-            guard let self, let s, ok else { return }  // on failure the review stays open
-            self.store.delete(key: s.target.key)
-            s.panel?.close()
-            s.panel = nil
-            self.cleanUp(s)
+            guard let self, let s, let p = s.panel else { return }
+            p.setSending(false)
+            guard ok else { return }  // on failure the review stays open
+            p.removeSent(sentCount)   // comments added while sending stay in the panel
+            if p.items.isEmpty {
+                self.store.delete(key: s.target.key)
+                p.close()
+                s.panel = nil
+                s.input?.setPending(0)
+                self.cleanUp(s)
+            }
         }
     }
 
@@ -358,7 +392,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 result = a.deliver(text, to: t, mode: live == true ? .submit : .pasteOnly)
             }
-            Log.info("deliver to \(a.name) \(t.key): liveness \(live.map { String($0) } ?? "unknown") -> \(result)")
+            Log.info("deliver to \(a.name) \(t.key): liveness \(live.map { String($0) } ?? "unknown") -> \(result.kind)")
+            if case .sent = result { a.activate(t) }  // keyboard back to the terminal
             DispatchQueue.main.async {
                 switch result {
                 case .sent, .pasted:
@@ -368,6 +403,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     if !isReview { self.clipboard.writeOwn(text, hidden: false) }
                     self.alert("Not sent", why + (isReview ? " Your review is kept in its panel." : " Your comment was copied to the clipboard."))
                     done?(false)
+                    self.returnFocus(s)
                 }
             }
         }
@@ -378,9 +414,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func appActivated(_ n: Notification) { updateVisibility() }
 
     /// Show each input and panel only while its terminal app is in front and its tab is selected.
+    private var visibilityBusy = false
+
     private func updateVisibility() {
         let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
         let me = ProcessInfo.processInfo.processIdentifier
+        let group = DispatchGroup()
         for s in sessions.values {
             let appShown = front == s.target.pid || front == me
             s.input?.appShown = appShown
@@ -390,7 +429,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 s.panel?.applyVisibility()
                 continue
             }
+            // Skip the tab check while the previous one is still running, so slow
+            // answers (a busy helper, AppleScript) never pile up ahead of hotkeys.
+            if visibilityBusy { continue }
             let (a, t) = (s.adapter, s.target)
+            group.enter()
             work.async {
                 let selected = a.isTabSelected(t)
                 DispatchQueue.main.async {
@@ -398,8 +441,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     s.panel?.tabShown = selected
                     s.input?.applyVisibility()
                     s.panel?.applyVisibility()
+                    group.leave()
                 }
             }
+        }
+        if !visibilityBusy {
+            visibilityBusy = true
+            group.notify(queue: .main) { [weak self] in self?.visibilityBusy = false }
         }
     }
 
@@ -411,30 +459,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = store.importPrototype(from: old)
     }
 
-    /// Reopen saved iTerm2 and Terminal.app reviews whose pane still exists.
-    /// Other reviews come back when kaju is next used in their pane.
-    private func restoreReviews() {
-        let saved = store.all()
+    /// Reopen saved reviews (plan: review keys and restore rules).
+    /// - iTerm2: the same session if it still exists, else the current session.
+    /// - Terminal.app: the same tab (tty in the same window) if Claude Code runs
+    ///   there, else the front tab.
+    /// - Generic: the front window of the same app.
+    /// - tmux: when kaju is next used in that pane.
+    /// A review that moves to another pane is saved under its new key.
+    private func restoreReviews(onlyITerm: Bool) {
+        let saved = store.all().filter { !$0.items.isEmpty && sessions[$0.key] == nil }
         work.async { [self] in
-            for r in saved where !r.items.isEmpty {
-                var found: (TerminalAdapter, Target)?
-                if r.key.hasPrefix("iterm2:"), let it = iterm, it.available,
-                   let t = it.target(session: String(r.key.dropFirst("iterm2:".count))) {
-                    found = (it, t)
-                } else if r.key.hasPrefix("terminal:") {
-                    let tty = String(r.key.dropFirst("terminal:".count))
-                    // ttys are reused by newer tabs: only reopen where Claude Code runs on that tty.
-                    if Liveness.claudeInForeground(tty: tty),
-                       let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Terminal").first {
-                        found = (terminalApp, Target(key: r.key, label: r.label, bundleID: "com.apple.Terminal",
-                                                     pid: app.processIdentifier, tty: tty, windowID: nil))
-                    }
-                }
-                guard let (a, t) = found else { continue }
+            for r in saved {
+                if onlyITerm && !r.key.hasPrefix("iterm2:") { continue }
+                guard let (a, t) = resolveSaved(r) else { continue }
                 DispatchQueue.main.async {
+                    if t.key != r.key {  // moved to another pane
+                        self.store.delete(key: r.key)
+                        try? self.store.save(ReviewFile(key: t.key, label: t.label, items: r.items))
+                    }
                     if self.sessions[t.key] == nil { _ = self.session(for: a, t) }
                 }
             }
+        }
+    }
+
+    private func resolveSaved(_ r: ReviewFile) -> (TerminalAdapter, Target)? {
+        let parts = r.key.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return nil }
+        let rest = parts[1]
+        switch parts[0] {
+        case "iterm2":
+            guard let it = iterm, it.available,
+                  let app = NSRunningApplication.runningApplications(withBundleIdentifier: ITerm2Adapter.bundleID).first else { return nil }
+            if let t = it.target(session: rest) { return (it, t) }
+            return it.target(app: app).map { (it, $0) }
+        case "terminal":
+            guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Terminal").first else { return nil }
+            let f = rest.split(separator: ":").map(String.init)  // tty, window id
+            if f.count == 2, let wid = UInt32(f[1]), terminalApp.tabExists(tty: f[0], windowID: wid),
+               Liveness.claudeInForeground(tty: f[0]) {
+                return (terminalApp, Target(key: r.key, label: r.label, bundleID: "com.apple.Terminal",
+                                            pid: app.processIdentifier, tty: f[0], windowID: wid))
+            }
+            return terminalApp.target(app: app).map { (terminalApp, $0) }
+        case "generic":
+            let bundle = String(rest.split(separator: ":").first ?? "")
+            guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first else { return nil }
+            return generic.target(app: app).map { (generic, $0) }
+        default:
+            return nil  // tmux: restored when the pane is next used
         }
     }
 }

@@ -5,9 +5,11 @@ import KajuCore
 /// Basic tier: any terminal without a richer adapter (Ghostty, Warp, Alacritty, ...).
 ///
 /// kaju cannot see which program runs in the window, so it never presses
-/// Return here. It pastes the full multi-line message only when the window
-/// title shows Claude Code; otherwise it pastes a single line with every
-/// control character removed, which no shell will run.
+/// Return here, and it always pastes the message as a single line with every
+/// control character removed. A shell without bracketed paste would run each
+/// line of a multi-line paste; a single line without a newline never runs.
+/// (A window title is not proof of what is in the foreground: it can still
+/// show Claude Code after Claude has exited.)
 final class GenericAdapter: TerminalAdapter {
     let name = "generic"
     let clipboard: ClipboardMonitor
@@ -40,25 +42,20 @@ final class GenericAdapter: TerminalAdapter {
     func isClaudeRunning(_ t: Target) -> Bool? { nil }
     func activate(_ t: Target) { System.activate(pid: t.pid) }
 
-    /// Titles Claude Code sets on the terminal: "✳ topic" when idle, a spinner glyph while working.
-    static func titleShowsClaude(_ title: String) -> Bool {
-        let marks: Set<Character> = ["✳", "◐", "◓", "◑", "◒", "✶", "✻", "✽", "✢"]
-        if let first = title.trimmingCharacters(in: .whitespaces).first, marks.contains(first) { return true }
-        return title.contains("Claude Code")
-    }
-
     func deliver(_ text: String, to t: Target, mode: DeliveryMode) -> DeliveryResult {
         guard System.accessibilityTrusted else {
             DispatchQueue.main.async { System.requestAccessibility() }
             return .failed("kaju needs Accessibility permission to paste into \(t.label). Grant it in System Settings, then send again.")
         }
         System.activate(pid: t.pid)
-        // The captured window must be the front window (ignoring kaju's own windows).
-        guard System.wait(1.0, { System.topWindowIgnoringKaju() == t.windowID }) else {
-            return .refused("The window you commented on is no longer in front, so nothing was pasted.")
+        // The terminal must be the active app and the captured window its front window.
+        guard System.wait(1.0, {
+            NSWorkspace.shared.frontmostApplication?.processIdentifier == t.pid
+                && System.topWindowIgnoringKaju() == t.windowID
+        }) else {
+            return .refused("The window you commented on did not come to the front, so nothing was pasted.")
         }
-        let confirmed = Self.titleShowsClaude(System.focusedWindowTitle(pid: t.pid) ?? "")
-        PasteDelivery.paste(confirmed ? text : Message.singleLine(text), clipboard: clipboard)
+        PasteDelivery.paste(Message.singleLine(text), clipboard: clipboard)
         return .pasted  // never Return in this tier
     }
 }

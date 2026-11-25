@@ -25,8 +25,9 @@ public struct Annotation: Codable, Equatable {
 public enum Message {
     /// Quote the selection above the comment, markdown style; the tag prefixes the comment.
     public static func single(_ c: Annotation) -> String {
-        let body = c.tag.isEmpty ? c.comment : "[\(c.tag)] \(c.comment)"
-        let quote = c.quote.trimmingCharacters(in: .whitespacesAndNewlines)
+        let comment = clean(c.comment)
+        let body = c.tag.isEmpty ? comment : "[\(clean(c.tag))] \(comment)"
+        let quote = clean(c.quote).trimmingCharacters(in: .whitespacesAndNewlines)
         if quote.isEmpty { return body }
         let quoted = quote.split(separator: "\n", omittingEmptySubsequences: false)
             .map { "> " + trimTrailing(String($0)) }
@@ -62,6 +63,20 @@ public enum Message {
             out.unicodeScalars.append(scalar)
         }
         return out.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Remove control characters except newline and tab, so that terminal
+    /// output pasted back (for example a stray ESC[201~) cannot end a
+    /// bracketed paste early or inject escape sequences. CR becomes LF.
+    public static func clean(_ text: String) -> String {
+        var out = ""
+        for scalar in text.replacingOccurrences(of: "\r\n", with: "\n").unicodeScalars {
+            if scalar == "\r" { out += "\n"; continue }
+            if scalar == "\n" || scalar == "\t" { out.unicodeScalars.append(scalar); continue }
+            if scalar.value < 0x20 || scalar.value == 0x7F || (0x80...0x9F).contains(scalar.value) { continue }
+            out.unicodeScalars.append(scalar)
+        }
+        return out
     }
 
     static func trimTrailing(_ s: String) -> String {

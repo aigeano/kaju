@@ -8,9 +8,21 @@ enum Log {
     private static let queue = DispatchQueue(label: "kaju.log")
     private static let stamp: ISO8601DateFormatter = { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f }()
 
+    private static var rotated = false
+
     static func info(_ message: String) {
         let line = "\(stamp.string(from: Date())) \(message)\n"
         queue.async {
+            // Keep the log small: once per run, move a log over 1 MB to kaju.log.1.
+            if !rotated {
+                rotated = true
+                let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+                if size > 1_000_000 {
+                    let old = url.appendingPathExtension("1")
+                    try? FileManager.default.removeItem(at: old)
+                    try? FileManager.default.moveItem(at: url, to: old)
+                }
+            }
             if let h = try? FileHandle(forWritingTo: url) {
                 h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close()
             } else {
