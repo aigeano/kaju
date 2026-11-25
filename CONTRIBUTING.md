@@ -53,7 +53,7 @@ Every adapter needs a test, by hand at least, that sending a comment and a revie
 | kitty | `kitten @ ls`, `kitten @ send-text --match id:N` | `allow_remote_control yes` |
 | WezTerm | `wezterm cli list`, `wezterm cli send-text --pane-id N` | None |
 
-Both can report the pane's tty, so both can reach the Full tier.
+Both can report the pane's tty, so both can get full support, including sending automatically after the safety check.
 
 ## Style
 
