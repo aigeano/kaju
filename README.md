@@ -54,20 +54,21 @@ The input stays open until you finish or clear it. Clicking back into the termin
 
 Your shell does not matter. Your terminal does, because terminals differ in what they let other apps see and do.
 
-| Tier | Terminals | What you get |
-|---|---|---|
-| **Full** | iTerm2; tmux inside iTerm2 or Terminal.app | Exact pane, per-tab visibility, comments submitted automatically after the safety check. iTerm2 also places the input at the selection and adds a right-click item. |
-| **Good** | Terminal.app | Exact tab, per-tab visibility, comments submitted automatically after the safety check. |
-| **Basic** | Ghostty, Warp, Alacritty, kitty, WezTerm, Hyper and others | The comment is pasted into the front window; **you press Return**. |
+| Terminal | Comment sent automatically | Input opens at the selection | Hides with its tab | Right-click item | Permissions |
+|---|---|---|---|---|---|
+| iTerm2 | Yes | Yes | Yes | Yes | Automation |
+| Terminal.app | Yes | No (at the mouse pointer) | Yes | No | Automation, Accessibility |
+| tmux, inside iTerm2 or Terminal.app | Yes | No (at the mouse pointer) | Yes | No | Same as the terminal it runs in |
+| Any other terminal (Ghostty, Warp, Alacritty, kitty, WezTerm, ...) | No: pasted as one line, you press Return | No (at the mouse pointer) | No (hides when the app is not in front) | No | Accessibility |
 
-kitty and WezTerm can reach the Full tier with an adapter. Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+kitty and WezTerm can get full support with an adapter. Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Safety
 
 kaju types into a terminal only when it is sure Claude Code is the program in front. A message pasted into a shell instead could run as commands, because the quoted lines start with `>`.
 
-- **Full and Good tiers:** before sending, kaju checks the foreground process of the pane's terminal. If it is not Claude Code, nothing is typed: your comment goes to the clipboard, or your review stays open.
-- **Basic tier:** kaju never presses Return. It pastes the multi-line message only when the window title shows Claude Code; otherwise it pastes everything as a single line with all control characters removed, which no shell will run. It pastes only if the window you commented on is still in front.
+- **iTerm2, Terminal.app and tmux:** before sending, kaju checks the foreground process of the pane's terminal. If it is not Claude Code, nothing is typed: your comment goes to the clipboard, or your review stays open.
+- **Other terminals:** kaju cannot see which program runs there, so it never presses Return and always pastes the message as a single line with all control characters removed, which no shell will run. It pastes only if the window you commented on is still in front.
 
 ## Install
 
@@ -97,7 +98,7 @@ make uninstall    # removes them again
 |---|---|---|
 | Automation › iTerm2 | Finding and typing into iTerm2 sessions | First comment in iTerm2 |
 | Automation › Terminal | Finding Terminal.app tabs | First comment in Terminal.app |
-| Accessibility | Typing into Terminal.app and Basic-tier terminals | First comment there |
+| Accessibility | Typing into Terminal.app and other terminals | First comment there |
 
 iTerm2 also needs its Python API: iTerm2 › Settings › General › Magic › **Enable Python API**.
 
@@ -125,7 +126,7 @@ Choose **Reload config** after editing. If the hotkey is taken by another app, t
 
 ## Privacy
 
-kaju makes no network connections. It reads the clipboard to see your selection, never quotes items that password managers mark as concealed, and in the Basic tier only uses clipboard changes made while a terminal was in front. Comments are stored on your Mac only while a review is open. The log at `~/Library/Logs/kaju.log` records events, never comment text.
+kaju makes no network connections. It reads the clipboard to see your selection, never quotes items that password managers mark as concealed, and, in terminals other than iTerm2, Terminal.app and tmux, only uses clipboard changes made while a terminal was in front. Comments are stored on your Mac only while a review is open. The log at `~/Library/Logs/kaju.log` records events, never comment text.
 
 ## Licence
 
