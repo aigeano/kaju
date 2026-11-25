@@ -2,6 +2,8 @@
 
 **kaju: annotate, comment and collaborate with Claude Code.**
 
+![kaju in action: three comments on Claude Code's plan, collected in a review and sent back together](docs/demo.gif)
+
 Select some of Claude Code's output in your terminal, press a hotkey, type a comment. kaju sends the quoted text and your comment straight back to Claude Code, which answers right away. For longer reviews of a plan, a document or an explainer, collect comments in a side panel and send them all at once.
 
 kaju is named after a ginger cat who appears to run on a single brain cell but is exceptionally good at one thing: eating. kaju the tool is similar. It does not do much, but it is very good at one thing: comments.
@@ -11,6 +13,8 @@ kaju is named after a ginger cat who appears to run on a single brain cell but i
 1. Select text in Claude Code's output. Claude Code copies your selection to the clipboard.
 2. Press **⌃⌥K** (or, in iTerm2, right-click › **Comment with kaju**).
 3. A small input opens next to the selection, showing the quote it captured. Type your comment.
+   ![The comment input next to a selection, showing the captured quote](docs/screenshot-input.png)
+
 4. Press **⏎**. kaju checks that Claude Code is running in that pane, then delivers:
 
    ```
@@ -22,6 +26,8 @@ kaju is named after a ginger cat who appears to run on a single brain cell but i
 ### Reviews
 
 Press **⇥** in the input to start a review. Comments then collect in a panel docked on the side of the terminal window, one panel per pane. Send them all as one numbered message with **Send N to Claude Code** in the panel, or with **⌘⏎** in the input. Reviews are saved to disk on every change and come back after a restart.
+
+![A review in progress: two comments in the side panel, one tagged as a question, and a third being written](docs/screenshot-review.png)
 
 ### Keys
 
